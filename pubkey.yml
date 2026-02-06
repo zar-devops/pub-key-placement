@@ -1,0 +1,42 @@
+name: Add SSH Public Key
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-ssh-key:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Add SSH public key to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SSH_PUB_KEY: ${{ secrets.SSH_PUB_KEY }}
+        run: |
+          # 1. Setup the local SSH environment
+          mkdir -p ~/.ssh
+          echo "$SERVER_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          # 2. Prevent "Host key verification failed"
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          
+          # 3. Execute the update on the remote server
+          # We use << 'EOF' to ensure variables are evaluated on the runner, 
+          # but the logic executes safely on the server.
+          ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 "$SERVER_USER@$SERVER_HOST" bash << EOF
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            touch ~/.ssh/authorized_keys
+            chmod 600 ~/.ssh/authorized_keys
+            
+            # Check if key exists; if not, append it
+            if ! grep -qxF "$SSH_PUB_KEY" ~/.ssh/authorized_keys; then
+              echo "$SSH_PUB_KEY" >> ~/.ssh/authorized_keys
+              echo "Key added successfully."
+            else
+              echo "Key already exists in authorized_keys."
+            fi
+          EOF
